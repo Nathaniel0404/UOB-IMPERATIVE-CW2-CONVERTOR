@@ -21,6 +21,17 @@ typedef struct pgm {
     int maxGrey;
 } pgm;
 
+typedef struct clrInstr {
+    unsigned char in1;
+    unsigned char in2;
+    unsigned char in3;
+    unsigned char in4;
+    unsigned char in5;
+    unsigned char in6;
+} clrInstr;
+
+typedef unsigned char byte;
+
 pgm* parseHeader(char *header) {
     /*
         Indicate which arg we are extracting,
@@ -69,6 +80,40 @@ pgm* parseHeader(char *header) {
     return out;
 }
 
+clrInstr* getClrInstr(byte clr) {
+    clrInstr *out = malloc(sizeof(clrInstr));
+    *out = (clrInstr) {0,0,0,0,0,0};
+    byte opCode = 192; // 11000000
+    byte r = clr>>6;
+    out->in1 = opCode | r; // 110000RR
+    printf("In1: %d\n",out->in1);
+    r = clr<<2;
+    r >>= 2;
+    out->in2 = opCode | r; // 11RRRRRR
+    printf("In2: %d\n",out->in2);
+    byte g = clr >> 2;
+    out->in3 = opCode | g; // 11GGGGGG
+    printf("In3: %d\n",out->in3);
+    g = clr << 6;
+    g >>= 2;
+    out->in4 = opCode | g; // 11GG0000
+    printf("In4: %d\n",out->in4);
+    byte b = clr >> 4;
+    out ->in4 |= b; // 11GGBBBB
+    printf("In4: %d\n",out->in4);
+    b = clr << 4;
+    b >>= 2;
+    out->in5 = opCode | b; // 11BBBB00
+    printf("In5: %d\n",out->in5);
+    byte alpha = 255; // Max default value
+    out->in5 |= alpha >> 6;
+    printf("In5: %d\n",out->in5);
+    out->in6 = 255; // 11111111
+    printf("In6: %d\n",out->in6);
+
+    return out;
+}
+
 
 /*
 ============== TESTS ==============
@@ -112,9 +157,44 @@ void parseHeaderTest(void) {
     printf("PASSED: %s\n",test);
 }
 
+void getClrInstrTest(void) {
+    char *test = "clrInstrTest";
+    clrInstr* c = getClrInstr(255); // 1111 1111
+    assert(test, __LINE__, c != NULL);
+    assert(test, __LINE__, c->in1 == 195); // 1100 0011
+    assert(test, __LINE__, c->in2 == 255); // 1111 1111
+    assert(test, __LINE__, c->in3 == 255); // 1111 1111
+    assert(test, __LINE__, c->in4 == 255); // 1111 1111
+    assert(test, __LINE__, c->in5 == 255); // 1111 1111
+    assert(test, __LINE__, c->in6 == 255); // 1111 1111
+    if (c != NULL) free(c);
+
+    c = getClrInstr(0); // 0000 0000
+    assert(test, __LINE__, c != NULL);
+    assert(test, __LINE__, c->in1 == 192); // 1100 0000
+    assert(test, __LINE__, c->in2 == 192); // 1100 0000
+    assert(test, __LINE__, c->in3 == 192); // 1100 0000
+    assert(test, __LINE__, c->in4 == 192); // 1100 0000
+    assert(test, __LINE__, c->in5 == 195); // 1100 0011
+    assert(test, __LINE__, c->in6 == 255); // 1111 1111
+    if (c != NULL) free(c);
+
+    c = getClrInstr(200); // 1100 1000
+    assert(test, __LINE__, c != NULL);
+    assert(test, __LINE__, c->in1 == 195); // 1100 0011
+    assert(test, __LINE__, c->in2 == 200); // 1100 1000
+    assert(test, __LINE__, c->in3 == 242); // 1111 0010
+    assert(test, __LINE__, c->in4 == 204); // 1100 1100
+    assert(test, __LINE__, c->in5 == 227); // 1110 0011
+    assert(test, __LINE__, c->in6 == 255); // 1111 1111
+    if (c != NULL) free(c);
+
+    printf("PASSED: %s\n",test);
+}
 
 void test(void) {
     parseHeaderTest();
+    getClrInstrTest();
     printf("ALL TESTS PASSED!\n");
 }
 
