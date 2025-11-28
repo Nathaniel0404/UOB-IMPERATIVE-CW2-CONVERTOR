@@ -22,13 +22,23 @@ typedef struct pgm {
 } pgm;
 
 typedef struct clrInstr {
-    unsigned char in1;
-    unsigned char in2;
-    unsigned char in3;
-    unsigned char in4;
-    unsigned char in5;
-    unsigned char in6;
+    byte in1; //110000RR
+    byte in2; //11RRRRRR
+    byte in3; //11GGGGGG
+    byte in4; //11GGBBBB
+    byte in5; //11BBBBAA
+    byte in6; //11AAAAAA
+    byte setC = 131; //10000011
 } clrInstr;
+
+typedef struct targetInstr {
+    byte getX1; //110000XX
+    byte getX2; //11XXXXXX
+    byte setX;
+    byte getY1; //110000YY
+    byte getY2; //11YYYYYY
+    byte setY;
+} targetInstr;
 
 typedef unsigned char byte;
 
@@ -114,6 +124,38 @@ clrInstr* getClrInstr(byte clr) {
     return out;
 }
 
+targetInstr* getTargetInstr(byte x, byte y) {
+    return NULL;
+}
+
+void parseBytes(FILE* in, char *header, pgm* p) {
+    int headerSize = sizeof(*header);
+
+    // Shift file pointer to start of pixel data
+    fseek(in,headerSize,SEEK_SET);
+
+    unsigned char b;
+    int row = 0;
+    unsigned char currClr = 0;
+    int clrCount = 0;
+    while (!feof(in)) {
+        for (int w = 0; w < p->width; w++) {
+            b = fgetc(in);
+            if (b != currClr) {
+                /*
+                Add block instructions only if clrCount != 0
+                */
+                currClr = b;
+                clrCount = 1;
+            } else {
+                clrCount++;
+            }
+        }
+        row++;
+    }
+
+
+}
 
 /*
 ============== TESTS ==============
@@ -188,6 +230,35 @@ void getClrInstrTest(void) {
     assert(test, __LINE__, c->in5 == 227); // 1110 0011
     assert(test, __LINE__, c->in6 == 255); // 1111 1111
     if (c != NULL) free(c);
+
+    printf("PASSED: %s\n",test);
+}
+
+void getTargetInstrTest(void) {
+    char *test = "clrInstrTest";
+    targetInstr* t = getTargetInstr(0,0);
+    assert(test, __LINE__, t != NULL);
+    assert(test, __LINE__, t->getX1 == 192); // 1100 0000
+    assert(test, __LINE__, t->getX2 == 192); // 1100 0000
+    assert(test, __LINE__, t->getY1 == 192); // 1100 0000
+    assert(test, __LINE__, t->getY2 == 192); // 1100 0000
+    if (t != NULL) free(t);
+
+    t = getTargetInstr(199,199);
+    assert(test, __LINE__, t != NULL);
+    assert(test, __LINE__, t->getX1 == 195); // 1100 0011
+    assert(test, __LINE__, t->getX2 == 199); // 1100 0111
+    assert(test, __LINE__, t->getY1 == 195); // 1100 0011
+    assert(test, __LINE__, t->getY2 == 199); // 1100 0111
+    if (t != NULL) free(t);
+
+    t = getTargetInstr(15,134);
+    assert(test, __LINE__, t != NULL);
+    assert(test, __LINE__, t->getX1 == 192); // 1100 0000
+    assert(test, __LINE__, t->getX2 == 207); // 1100 1111
+    assert(test, __LINE__, t->getY1 == 194); // 1100 0010
+    assert(test, __LINE__, t->getY2 == 198); // 1100 0110
+    if (t != NULL) free(t);
 
     printf("PASSED: %s\n",test);
 }
