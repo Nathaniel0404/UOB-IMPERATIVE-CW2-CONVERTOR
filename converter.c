@@ -15,6 +15,8 @@ FILE* openFile(char* fileName, char* purpose) {
     exit(1);
 }
 
+typedef unsigned char byte;
+
 typedef struct pgm {
     int height;
     int width;
@@ -28,7 +30,7 @@ typedef struct clrInstr {
     byte in4; //11GGBBBB
     byte in5; //11BBBBAA
     byte in6; //11AAAAAA
-    byte setC = 131; //10000011
+    byte setC; //10000011
 } clrInstr;
 
 typedef struct targetInstr {
@@ -40,7 +42,7 @@ typedef struct targetInstr {
     byte setY;
 } targetInstr;
 
-typedef unsigned char byte;
+
 
 pgm* parseHeader(char *header) {
     /*
@@ -96,66 +98,52 @@ clrInstr* getClrInstr(byte clr) {
     byte opCode = 192; // 11000000
     byte r = clr>>6;
     out->in1 = opCode | r; // 110000RR
-    printf("In1: %d\n",out->in1);
+    // printf("In1: %d\n",out->in1);
     r = clr<<2;
     r >>= 2;
     out->in2 = opCode | r; // 11RRRRRR
-    printf("In2: %d\n",out->in2);
+    // printf("In2: %d\n",out->in2);
     byte g = clr >> 2;
     out->in3 = opCode | g; // 11GGGGGG
-    printf("In3: %d\n",out->in3);
+    // printf("In3: %d\n",out->in3);
     g = clr << 6;
     g >>= 2;
     out->in4 = opCode | g; // 11GG0000
-    printf("In4: %d\n",out->in4);
+    // printf("In4: %d\n",out->in4);
     byte b = clr >> 4;
     out ->in4 |= b; // 11GGBBBB
-    printf("In4: %d\n",out->in4);
+    // printf("In4: %d\n",out->in4);
     b = clr << 4;
     b >>= 2;
     out->in5 = opCode | b; // 11BBBB00
-    printf("In5: %d\n",out->in5);
+    // printf("In5: %d\n",out->in5);
     byte alpha = 255; // Max default value
     out->in5 |= alpha >> 6;
-    printf("In5: %d\n",out->in5);
+    // printf("In5: %d\n",out->in5);
     out->in6 = 255; // 11111111
-    printf("In6: %d\n",out->in6);
+    // printf("In6: %d\n",out->in6);
+
+    out->setC = 131; //10000011
 
     return out;
 }
 
 targetInstr* getTargetInstr(byte x, byte y) {
-    return NULL;
+    targetInstr* out = malloc(sizeof(targetInstr));
+    *out = (targetInstr) {0,0,0,0,0,0};
+    out->setX = 133; //1000 0101
+    out->setY = 132; //1000 0100
+    byte dataOp = 192; //1100 0000
+    
+    out->getX1 = dataOp | x >> 6; //1100 00XX
+    out->getX2 = dataOp | (x << 2) >> 2; //11XX XXXX
+
+    out->getY1 = dataOp | y >> 6; //1100 00YY
+    out->getY2 = dataOp | (y << 2) >> 2; //11YY YYYY
+    return out;
 }
 
-void parseBytes(FILE* in, char *header, pgm* p) {
-    int headerSize = sizeof(*header);
 
-    // Shift file pointer to start of pixel data
-    fseek(in,headerSize,SEEK_SET);
-
-    unsigned char b;
-    int row = 0;
-    unsigned char currClr = 0;
-    int clrCount = 0;
-    while (!feof(in)) {
-        for (int w = 0; w < p->width; w++) {
-            b = fgetc(in);
-            if (b != currClr) {
-                /*
-                Add block instructions only if clrCount != 0
-                */
-                currClr = b;
-                clrCount = 1;
-            } else {
-                clrCount++;
-            }
-        }
-        row++;
-    }
-
-
-}
 
 /*
 ============== TESTS ==============
@@ -235,7 +223,7 @@ void getClrInstrTest(void) {
 }
 
 void getTargetInstrTest(void) {
-    char *test = "clrInstrTest";
+    char *test = "getTargetInstrTest";
     targetInstr* t = getTargetInstr(0,0);
     assert(test, __LINE__, t != NULL);
     assert(test, __LINE__, t->getX1 == 192); // 1100 0000
@@ -266,6 +254,7 @@ void getTargetInstrTest(void) {
 void test(void) {
     parseHeaderTest();
     getClrInstrTest();
+    getTargetInstrTest();
     printf("ALL TESTS PASSED!\n");
 }
 
