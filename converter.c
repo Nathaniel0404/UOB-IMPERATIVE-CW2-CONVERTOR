@@ -131,8 +131,8 @@ clrInstr* getClrInstr(byte clr) {
 targetInstr* getTargetInstr(byte x, byte y) {
     targetInstr* out = malloc(sizeof(targetInstr));
     *out = (targetInstr) {0,0,0,0,0,0};
-    out->setX = 133; //1000 0101
-    out->setY = 132; //1000 0100
+    out->setX = 132; //1000 0100
+    out->setY = 133; //1000 0101
     byte dataOp = 192; //1100 0000
     
     out->getX1 = dataOp | x >> 6; //1100 00XX
@@ -143,7 +143,168 @@ targetInstr* getTargetInstr(byte x, byte y) {
     return out;
 }
 
+byte* blockInstr(byte x, byte y, byte colour) {
+    /*
+    Return an array of bytecodes
+    DATA add colours (6 lines)
+    COLOUR (1 line)
+    DATA add x coordinate (2 lines)
+    TARGETX (1 line)
+    DATA add y coordinate  (2 lines)
+    TARGETY (1 line)
+    DY (1 line)
+    TOTAL: 14 lines
+    */
+    byte* instructions = malloc(sizeof(byte)*14 + 1);
+    clrInstr* cInstr = getClrInstr(colour);
+    targetInstr* tInstr = getTargetInstr(x,y);
+    instructions[0] = cInstr->in1;
+    instructions[1] = cInstr->in2;
+    instructions[2] = cInstr->in3;
+    instructions[3] = cInstr->in4;
+    instructions[4] = cInstr->in5;
+    instructions[5] = cInstr->in6;
+    instructions[6] = cInstr->setC;
 
+    instructions[7] = tInstr->getX1;
+    instructions[8] = tInstr->getX2;
+    instructions[9] = tInstr->setX;
+    instructions[10] = tInstr->getY1;
+    instructions[11] = tInstr->getY2;
+    instructions[12] = tInstr->setY;
+
+    instructions[13] = 64; //DY 01000000
+    instructions[14] = '\0';
+
+    free(cInstr);
+    free(tInstr);
+
+    return instructions;
+}
+
+byte* changeLocInstr(byte x,byte y) {
+    /*
+    NONE (1 line)
+    get X (2 lines)
+    TARGETX (1 line)
+    get Y (2 lines)
+    TARGETY (1 line)
+    dy (1 line)
+    block
+    /0
+    Total: 10
+    */
+    byte* instructions = malloc(sizeof(byte)*10);
+    targetInstr* tInstr = getTargetInstr(x,y);
+    instructions[0] = 128; // 1000 0000
+    instructions[1] = tInstr->getX1;
+    instructions[2] = tInstr->getX2;
+    instructions[3] = tInstr->setX;
+    instructions[4] = tInstr->getY1;
+    instructions[5] = tInstr->getY2;
+    instructions[6] = tInstr->setY;
+    instructions[7] = 64; //DY 01000000
+    instructions[8] = 129; //BLOCK 10000010
+    instructions[9] = '\0';
+
+    free(tInstr);
+    return instructions;
+}
+
+void writeInstr(FILE* out,byte* instr) {
+    int i = 0;
+    printf("Instruction\n");
+    while (instr[i] != '\0') {
+        printf("%d\n",instr[i]);
+        fputc(instr[i],out);
+        i++;
+    }
+    printf("------\n");
+}
+
+void parseBytes(FILE* in,FILE* out, pgm* p) {
+    // int headerSize = sizeof(*header);
+
+    // Shift file pointer to start of pixel data
+    // fseek(in,headerSize,SEEK_SET);
+    
+    
+    int row = 0;
+    byte b = fgetc(in);
+    byte currClr = b;
+    int clrCount = 0;
+    while (!feof(in)) {
+        //set coordinates to start of new row
+        byte* resetLoc = changeLocInstr(0,row);
+        writeInstr(out,resetLoc);
+        free(resetLoc);
+        for (int w = 0; w < p->width; w++) {
+            b = fgetc(in);
+            if (b != currClr || w == p->width-1) {
+                /*
+                Add block instructions only if clrCount != 0
+                - Set colour
+                - Set x to w-1
+                - Draw
+                */
+                byte* blkInstr = blockInstr(w,row,currClr);
+                writeInstr(out,blkInstr);
+                currClr = b;
+                clrCount = 1;
+                free(blkInstr);
+            } else {
+                clrCount++;
+            }
+            printf("%d ",b);
+            
+            
+        }
+        printf("\n");
+        row++;
+    }
+
+    printf("Completed parsing.\n");
+    printf("Height: %d Width: %d\n",p->height,p->width);
+}
+
+char* extractFilename(char* filename) {
+    char* skFilename = malloc(strlen(filename)+1);
+    int i = 0;
+    bool isExtension = false;
+    while (filename[i] != '\0') {
+        char curr = filename[i];
+        if (curr == '.') {
+            isExtension = true;
+            skFilename[i] = '.';
+        } else if (isExtension && curr =='p') {
+            skFilename[i] = 's';
+        } else if (isExtension && curr == 'g') {
+            skFilename[i] = 'k';
+        } else if (isExtension && curr =='m') {
+            skFilename[i] = '\0';
+        } else {
+            skFilename[i] = filename[i];
+        }
+        i++;
+    }
+    return skFilename;
+}
+
+void processFile(char* filename) {
+    FILE* in = openFile(filename,"rb");
+    char* skFile = extractFilename(filename);
+    FILE* out = openFile(skFile,"wb");
+
+    char header[1024];
+    fgets(header,sizeof(header),in);
+
+    pgm* p = parseHeader(header);
+
+    parseBytes(in,out,p);
+    free(skFile);
+    fclose(in);
+    fclose(out);
+}
 
 /*
 ============== TESTS ==============
@@ -251,14 +412,57 @@ void getTargetInstrTest(void) {
     printf("PASSED: %s\n",test);
 }
 
+void blockInstrTest(void) {
+    char *test = "blockInstrTest";
+    byte* b = blockInstr(199,199,255);
+    assert(test, __LINE__, b[0] == 195); // 1100 0011
+    assert(test, __LINE__, b[1] == 255); // 1111 1111
+    assert(test, __LINE__, b[2] == 255); // 1111 1111
+    assert(test, __LINE__, b[3] == 255); // 1111 1111
+    assert(test, __LINE__, b[4] == 255); // 1111 1111
+    assert(test, __LINE__, b[5] == 255); // 1111 1111
+    assert(test, __LINE__, b[6] == 131);
+    assert(test, __LINE__, b[7] == 195); // 1100 0011
+    assert(test, __LINE__, b[8] == 199);
+    assert(test, __LINE__, b[9] == 132); // 1100 0111
+    assert(test, __LINE__, b[10] == 195); // 1100 0011
+    assert(test, __LINE__, b[11]== 199);
+    assert(test, __LINE__, b[12]== 133);
+    assert(test, __LINE__, b[13]== 64);
+     // 1100 0111
+    free(b);
+    printf("PASSED: %s\n",test);
+}
+
+void extractFilenameTest(void) {
+    char *test = "extractFilenameTest";
+    char* s = extractFilename("myimage.pgm");
+    assert(test, __LINE__, strcmp(s,"myimage.sk") == 0);
+    free(s);
+
+    s = extractFilename(".pgm");
+    assert(test, __LINE__, strcmp(s,".sk") == 0);
+    free(s);
+
+    printf("PASSED: %s\n",test);
+}
+
 void test(void) {
     parseHeaderTest();
     getClrInstrTest();
     getTargetInstrTest();
+    blockInstrTest();
+    extractFilenameTest();
     printf("ALL TESTS PASSED!\n");
 }
 
 int main(int n, char *args[]) {
-    test();
+    if (n == 1) {
+        test();
+    } else if (n == 2) {
+        processFile(args[1]);
+    } else {
+        printf("Incorrect number of arguments!");
+    }
     return 0;
 }
