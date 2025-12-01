@@ -131,6 +131,7 @@ clrInstr* getClrInstr(byte clr) {
 
 
 targetInstr* getTargetInstr(byte x, byte y) {
+
     targetInstr* out = malloc(sizeof(targetInstr));
     *out = (targetInstr) {0,0,0,0,0,0};
 
@@ -329,6 +330,19 @@ void processFile(char* filename) {
 
 
 /*
+============== SK TO PGM ==============
+*/
+
+byte getByteData(byte in1, byte in2) {
+    byte dataOpExtractor = 0x3f; //0011 1111
+    byte partition1 = in1 & dataOpExtractor; //0000 00XX
+    byte partition2 = in2 & dataOpExtractor; // 00XX XXXX
+    byte out = (partition1 << 6) | partition2;
+    return out;
+}
+
+
+/*
 ============== TESTS ==============
 */
 
@@ -487,6 +501,19 @@ void isValidPgmTest(void) {
     printf("PASSED: %s\n",test);
 }
 
+/*
+============== SK TO PGM TESTS ==============
+*/
+
+void getByteDataTest(void) {
+    char *test = "getByteDataTest";
+    assert(test, __LINE__, getByteData(0xc0,0xc0) == 0);
+    assert(test, __LINE__, getByteData(0xc3,0xff) == 255);
+    assert(test, __LINE__, getByteData(0xc1,0xf8) == 120);
+    printf("PASSED: %s\n",test);
+}
+
+
 void test(void) {
     parseHeaderTest();
     getClrInstrTest();
@@ -494,6 +521,7 @@ void test(void) {
     blockInstrTest();
     extractFilenameTest();
     isValidPgmTest();
+    getByteDataTest();
     printf("ALL TESTS PASSED!\n");
 }
 
