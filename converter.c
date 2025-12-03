@@ -324,9 +324,7 @@ byte getByteData(byte in1, byte in2) {
 
 void parseSK(FILE* in,FILE* out) {
     byte curr_x = 0;
-    byte curr_y = 0;
     byte tx = 0;
-    byte ty = 0;
     byte in1 = 0;
     byte in2 = 0;
     byte pixelClr = 0;
@@ -338,7 +336,6 @@ void parseSK(FILE* in,FILE* out) {
         const byte opCodeExtractor = 0xc0;
         const byte dataOp = 0xc0;
         const byte targetX = 132; //1000 0100
-        const byte targetY = 133;  //1000 0101
         const byte line = 129; //LINE 10000001
         const byte noneCode = 128; //NONE 1000 0000
         const byte dy = 64; //DY 01000000
@@ -357,11 +354,12 @@ void parseSK(FILE* in,FILE* out) {
                     in2 = b;
                     break;
                 case 5:
+                    pixelClr = getByteData(in1,in2);
                     printf("|COLOUR|\n");
                     
                     break;
                 default:
-                    pixelClr = getByteData(in1,in2);
+                    
                     break;
             }
             dataCount++;
@@ -372,16 +370,12 @@ void parseSK(FILE* in,FILE* out) {
         if (b == targetX) {
             tx = getByteData(in1,in2);
             printf("|TX| %02x\n",tx);
-        } else if (b == targetY) {
-            ty = getByteData(in1,in2);
-            printf("|TY|\n");
         } else if (b == line || b == noneCode) {
             printf("|LINE\\NONE\n");
             toggleLine = (b == line);
         } else if (b == dy && !toggleLine) {
             printf("|DY change loc|\n");
             curr_x = tx;
-            curr_y = ty;
         } else if (b == dy && toggleLine) {
             
             int n_pixels = tx - curr_x; //Since line is only used horizontally
@@ -389,8 +383,7 @@ void parseSK(FILE* in,FILE* out) {
             for (int i = 0; i < n_pixels; i++) {
                 putc(pixelClr,out);
             }
-            curr_x = tx-1;
-            curr_y = ty;
+            curr_x = tx;
         }
 
         b = fgetc(in);
@@ -398,7 +391,6 @@ void parseSK(FILE* in,FILE* out) {
 }
 
 void generatePGM(FILE* in, FILE* out) {
-    // char* header = "P5 200 200 255\n";
     fprintf(out,"P5 200 200 255 \n");
     parseSK(in,out);
 }
@@ -450,7 +442,6 @@ char* extractFilenameSK(char* filename) {
 void processFile(char* filename, bool isConvertingPGM) {
     FILE* in = openFile(filename,"rb");
     
-    printf("Files opened.\n");
     if (isConvertingPGM) {
         char* skFile = extractFilename(filename);
         FILE* sk = openFile(skFile,"wb");
