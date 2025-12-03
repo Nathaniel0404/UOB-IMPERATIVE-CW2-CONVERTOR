@@ -200,7 +200,7 @@ byte* changeLocInstr(byte x,byte y) {
     get Y (2 lines)
     TARGETY (1 line)
     dy (1 line)
-    block
+    LINE
     /0
     Total: 10
     */
@@ -208,7 +208,7 @@ byte* changeLocInstr(byte x,byte y) {
     targetInstr* tInstr = getTargetInstr(x,y);
     const byte dy = 64; //DY 01000000
     const byte line = 129; //LINE 10000001
-    instructions[0] = 128; // 1000 0000
+    instructions[0] = 128; // NONE 1000 0000
     instructions[1] = tInstr->getX1;
     instructions[2] = tInstr->getX2;
     instructions[3] = tInstr->setX;
@@ -307,26 +307,7 @@ bool isValidPGM(char* filename) {
     return true;
 }
 
-void processFile(char* filename) {
-    FILE* in = openFile(filename,"rb");
-    char* skFile = extractFilename(filename);
-    FILE* out = openFile(skFile,"wb");
 
-    char header[1024];
-    fgets(header,sizeof(header),in);
-    
-
-    pgm* p = parseHeader(header);
-    if (p == NULL) {
-        fflush(stderr);
-        perror("Incorrect file format");
-        exit(1);
-    }
-    parseBytes(in,out,p);
-    free(skFile);
-    fclose(in);
-    fclose(out);
-}
 
 
 /*
@@ -341,6 +322,161 @@ byte getByteData(byte in1, byte in2) {
     return out;
 }
 
+void parseSK(FILE* in,FILE* out) {
+    byte curr_x = 0;
+    byte curr_y = 0;
+    byte tx = 0;
+    byte ty = 0;
+    byte in1 = 0;
+    byte in2 = 0;
+    byte pixelClr = 0;
+    int dataCount = 0;
+    bool toggleLine = true;
+
+    byte b = fgetc(in);
+    while (!feof(in)) {
+        const byte opCodeExtractor = 0xc0;
+        const byte dataOp = 0xc0;
+        const byte targetX = 132; //1000 0100
+        const byte targetY = 133;  //1000 0101
+        const byte line = 129; //LINE 10000001
+        const byte noneCode = 128; //NONE 1000 0000
+        const byte dy = 64; //DY 01000000
+        byte opCode = b & opCodeExtractor;
+        if (opCode == dataOp) {
+            printf("|DATA| %02x\n",b & 0x3f);
+            switch(dataCount) {
+                /*
+                If data count is < 2, we record the 2 instructions.
+                If it exceeds 2, that means this is a sequence to change colour, so we record pixel colour
+                */
+                case 0:
+                    in1 = b;
+                     break;
+                case 1:
+                    in2 = b;
+                    break;
+                case 5:
+                    printf("|COLOUR|\n");
+                    
+                    break;
+                default:
+                    pixelClr = getByteData(in1,in2);
+                    break;
+            }
+            dataCount++;
+        } else {
+            dataCount = 0;
+        }
+        
+        if (b == targetX) {
+            tx = getByteData(in1,in2);
+            printf("|TX| %02x\n",tx);
+        } else if (b == targetY) {
+            ty = getByteData(in1,in2);
+            printf("|TY|\n");
+        } else if (b == line || b == noneCode) {
+            printf("|LINE\\NONE\n");
+            toggleLine = (b == line);
+        } else if (b == dy && !toggleLine) {
+            printf("|DY change loc|\n");
+            curr_x = tx;
+            curr_y = ty;
+        } else if (b == dy && toggleLine) {
+            
+            int n_pixels = tx - curr_x; //Since line is only used horizontally
+            printf("|DY LINE| %d\n",n_pixels);
+            for (int i = 0; i < n_pixels; i++) {
+                putc(pixelClr,out);
+            }
+            curr_x = tx-1;
+            curr_y = ty;
+        }
+
+        b = fgetc(in);
+    }
+}
+
+void generatePGM(FILE* in, FILE* out) {
+    // char* header = "P5 200 200 255\n";
+    fprintf(out,"P5 200 200 255 \n");
+    parseSK(in,out);
+}
+
+
+bool isValidSK(char* filename) {
+    int len = strlen(filename);
+    char* ext = ".sk";
+    int fNameid = len - strlen(ext); //Start at extension
+    if (len < strlen(ext)+1) { // File can't possibly have a .pgm ext
+        return false;
+    }
+    int i = 0;
+    while (ext[i] != '\0') {
+        if (filename[fNameid] != ext[i]) {
+            return false;
+        }
+        i++;
+        fNameid++;
+    }
+    return true;
+}
+
+char* extractFilenameSK(char* filename) {
+    char* skFilename = malloc(strlen(filename)+2);
+    int i = 0;
+    bool isExtension = false;
+    while (filename[i] != '\0') {
+        char curr = filename[i];
+        if (curr == '.') {
+            isExtension = true;
+            skFilename[i] = '.';
+        } else if (isExtension && curr =='s') {
+            skFilename[i] = 'p';
+        } else if (isExtension && curr == 'k') {
+            skFilename[i] = 'g';
+        } else if (isExtension && curr =='\0') {
+            skFilename[i] = 'm';
+        } else {
+            skFilename[i] = curr;
+        }
+        i++;
+    }
+    skFilename[i] = 'm';
+    skFilename[i+1] = '\0';
+    return skFilename;
+}
+
+void processFile(char* filename, bool isConvertingPGM) {
+    FILE* in = openFile(filename,"rb");
+    
+    printf("Files opened.\n");
+    if (isConvertingPGM) {
+        char* skFile = extractFilename(filename);
+        FILE* sk = openFile(skFile,"wb");
+        char header[1024];
+        fgets(header,sizeof(header),in);
+    
+
+        pgm* p = parseHeader(header);
+        if (p == NULL) {
+            fflush(stderr);
+            perror("Incorrect file format");
+            exit(1);
+        }
+        parseBytes(in,sk,p);
+        free(skFile);
+        fclose(sk);
+    } else {
+        char* pgmFile = extractFilenameSK(filename);
+        FILE* pgmF = openFile(pgmFile,"wb");
+        generatePGM(in,pgmF);
+        free(pgmFile);
+        fclose(pgmF);
+    }
+    
+    fclose(in);
+}
 
 /*
 ============== TESTS ==============
@@ -513,6 +649,32 @@ void getByteDataTest(void) {
     printf("PASSED: %s\n",test);
 }
 
+void isValidSKTest(void) {
+    char *test = "isValidSKTest";
+    assert(test, __LINE__, isValidSK("x.sk") == true);
+    assert(test, __LINE__, isValidSK("fractal.sk") == true);
+    assert(test, __LINE__, isValidSK(".sk") == false);
+    assert(test, __LINE__, isValidSK("h.c") == false);
+    assert(test, __LINE__, isValidSK("display.c") == false);
+    assert(test, __LINE__, isValidSK("display.pgn") == false);
+    assert(test, __LINE__, isValidSK("displaypgm.pgm") == false);
+    assert(test, __LINE__, isValidSK("displaypgm.pgmm") == false);
+    printf("PASSED: %s\n",test);
+}
+
+void extractFilenameSKTest(void) {
+    char *test = "extractFilenameSKTest";
+    char* s = extractFilenameSK("myimage.sk");
+    assert(test, __LINE__, strcmp(s,"myimage.pgm") == 0);
+    free(s);
+
+    s = extractFilenameSK("fractal-test1.sk");
+    assert(test, __LINE__, strcmp(s,"fractal-test1.pgm") == 0);
+    free(s);
+
+    printf("PASSED: %s\n",test);
+}
+
 
 void test(void) {
     parseHeaderTest();
@@ -522,6 +684,8 @@ void test(void) {
     extractFilenameTest();
     isValidPgmTest();
     getByteDataTest();
+    isValidSKTest();
+    extractFilenameSKTest();
     printf("ALL TESTS PASSED!\n");
 }
 
@@ -529,10 +693,12 @@ void test(void) {
 int main(int n, char *args[]) {
     if (n == 1) {
         test();
-    } else if (n != 2 || !isValidPGM(args[1])) {
+    } else if (n != 2 || (!isValidPGM(args[1]) && !isValidSK(args[1]))) {
         printf("Incorrect input format!\n");
+    } else if (isValidPGM(args[1])){
+        processFile(args[1],true);
     } else {
-        processFile(args[1]);
+        processFile(args[1],false);
     }
     return 0;
 }
